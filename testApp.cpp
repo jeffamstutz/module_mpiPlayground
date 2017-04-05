@@ -20,9 +20,46 @@
 using namespace ospray;
 using namespace mpi;
 
+void initMaster()
+{
+  SERIALIZED_MPI_CALL(Comm_split(mpi::world.comm,1,mpi::world.rank,&app.comm));
+  app.makeIntraComm();
+
+  if (logMPI) {
+    std::cerr << "#w: app process " << app.rank << '/' << app.size
+              << " (global " << world.rank << '/' << world.size << std::endl;
+  }
+
+  SERIALIZED_MPI_CALL(Intercomm_create(app.comm, 0, world.comm, 1, 1, &worker.comm));
+  if (logMPI) {
+    std::cerr << "master: Made 'worker' intercomm (through intercomm_create): "
+              << std::hex << std::showbase << worker.comm
+              << std::noshowbase << std::dec << std::endl;
+  }
+
+  worker.makeInterComm();
+}
+
+void initWorker()
+{
+  SERIALIZED_MPI_CALL(Comm_split(mpi::world.comm,0,mpi::world.rank,&worker.comm));
+  worker.makeIntraComm();
+  if (logMPI) {
+    auto &msg = std::cerr;
+    msg << "master: Made 'worker' intercomm (through split): "
+        << std::hex << std::showbase << worker.comm
+        << std::noshowbase << std::dec << std::endl;
+
+    msg << "#w: app process " << app.rank << '/' << app.size
+        << " (global " << world.rank << '/' << world.size << std::endl;
+  }
+
+  SERIALIZED_MPI_CALL(Intercomm_create(worker.comm, 0, world.comm, 0, 1, &app.comm));
+  app.makeInterComm();
+}
+
 void setup(int *ac, const char **av)
 {
-  MPI_Status status;
   mpi::init(ac,av);
 
   logMPI = true;
@@ -37,90 +74,50 @@ void setup(int *ac, const char **av)
                              "application?)");
   }
 
-  if (world.rank == 0) {
-    // we're the root
-    SERIALIZED_MPI_CALL(Comm_split(mpi::world.comm,1,mpi::world.rank,&app.comm));
-    app.makeIntraComm();
+  if (world.rank == 0)
+    initMaster();
+  else
+    initWorker();
+}
+
+void doHandshakeTestMaster()
+{
+  MPI_Status status;
+  serialized(CODE_LOCATION, [&](){
     if (logMPI) {
-      std::cerr << "#w: app process " << app.rank << '/' << app.size
-                << " (global " << world.rank << '/' << world.size << std::endl;
+      std::cerr << "#m: ping-ponging a test message to every worker..."
+                << std::endl;
     }
 
-    SERIALIZED_MPI_CALL(Intercomm_create(app.comm, 0, world.comm, 1, 1, &worker.comm));
-    if (logMPI) {
-      std::cerr << "master: Made 'worker' intercomm (through intercomm_create): "
-                << std::hex << std::showbase << worker.comm
-                << std::noshowbase << std::dec << std::endl;
-    }
-
-    // worker.makeIntracomm();
-    worker.makeInterComm();
-
-
-    // ------------------------------------------------------------------
-    // do some simple hand-shake test, just to make sure MPI is
-    // working correctly
-    // ------------------------------------------------------------------
-    serialized(CODE_LOCATION, [&](){
+    for (int i=0;i<worker.size;i++) {
       if (logMPI) {
-        std::cerr << "#m: ping-ponging a test message to every worker..."
-                  << std::endl;
+        std::cerr << "#m: sending tag "<< i << " to worker " << i << std::endl;
       }
+      MPI_Send(&i,1,MPI_INT,i,i,worker.comm);
+      int reply;
+      MPI_Recv(&reply,1,MPI_INT,i,i,worker.comm,&status);
+      Assert(reply == i);
+    }
+    MPI_Barrier(MPI_COMM_WORLD);
+  });
+}
 
-      for (int i=0;i<worker.size;i++) {
-        if (logMPI) {
-          std::cerr << "#m: sending tag "<< i << " to worker " << i << std::endl;
-        }
-        MPI_Send(&i,1,MPI_INT,i,i,worker.comm);
-        int reply;
-        MPI_Recv(&reply,1,MPI_INT,i,i,worker.comm,&status);
-        Assert(reply == i);
-      }
-      MPI_Barrier(MPI_COMM_WORLD);
-    });
-
-    // -------------------------------------------------------
-    // at this point, all processes should be set up and synced. in
-    // particular:
-    // - app has intracommunicator to all workers (and vica versa)
-    // - app process(es) are in one intercomm ("app"); workers all in
-    //   another ("worker")
-    // - all processes (incl app) have barrier'ed, and thus now in sync.
-  } else {
-    // we're the workers
-    SERIALIZED_MPI_CALL(Comm_split(mpi::world.comm,0,mpi::world.rank,&worker.comm));
-    worker.makeIntraComm();
+void doHandshakeTestWorker()
+{
+  MPI_Status status;
+  serialized(CODE_LOCATION, [&](){
+    // replying to test-message
     if (logMPI) {
       auto &msg = std::cerr;
-      msg << "master: Made 'worker' intercomm (through split): "
-          << std::hex << std::showbase << worker.comm
-          << std::noshowbase << std::dec << std::endl;
-
-      msg << "#w: app process " << app.rank << '/' << app.size
-          << " (global " << world.rank << '/' << world.size << std::endl;
+      msg << "#w: start-up ping-pong: worker " << worker.rank <<
+             " trying to receive tag " << worker.rank << "...\n";
     }
+    int reply;
+    MPI_Recv(&reply,1,MPI_INT,0,worker.rank,app.comm,&status);
+    MPI_Send(&reply,1,MPI_INT,0,worker.rank,app.comm);
 
-    SERIALIZED_MPI_CALL(Intercomm_create(worker.comm, 0, world.comm, 0, 1, &app.comm));
-    app.makeInterComm();
-
-    // ------------------------------------------------------------------
-    // do some simple hand-shake test, just to make sure MPI is
-    // working correctly
-    // ------------------------------------------------------------------
-    serialized(CODE_LOCATION, [&](){
-      // replying to test-message
-      if (logMPI) {
-        auto &msg = std::cerr;
-        msg << "#w: start-up ping-pong: worker " << worker.rank <<
-               " trying to receive tag " << worker.rank << "...\n";
-      }
-      int reply;
-      MPI_Recv(&reply,1,MPI_INT,0,worker.rank,app.comm,&status);
-      MPI_Send(&reply,1,MPI_INT,0,worker.rank,app.comm);
-
-      MPI_Barrier(MPI_COMM_WORLD);
-    });
-  }
+    MPI_Barrier(MPI_COMM_WORLD);
+  });
 }
 
 void shutdown()
@@ -131,6 +128,13 @@ void shutdown()
 int main(int argc, const char **argv)
 {
   setup(&argc, argv);
+
+  if (world.rank == 0)
+    doHandshakeTestMaster();
+  else
+    doHandshakeTestWorker();
+
   shutdown();
+
   return 0;
 }
