@@ -129,7 +129,7 @@ int main(int argc, const char **argv)
 {
   setup(&argc, argv);
 
-  if (world.rank == 0)
+  if (IamTheMaster())
     doHandshakeTestMaster();
   else
     doHandshakeTestWorker();
