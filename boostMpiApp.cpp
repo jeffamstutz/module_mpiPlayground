@@ -69,7 +69,7 @@ void tutorial_non_blocking()
   }
 }
 
-int main(int argc, char **argv)
+int main()
 {
   tutorial_hello();
   tutorial_point_communication();
