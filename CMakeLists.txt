@@ -24,12 +24,25 @@ if (OSPRAY_MODULE_MPIPLAYGROUND)
   # compiler etc.
   ospray_configure_mpi()
 
+  find_package(Boost REQUIRED COMPONENTS mpi)
+
+  include_directories(${Boost_INCLUDE_DIRS})
+
   ospray_create_application(ospMpiPlayground
     testApp.cpp
   LINK
     ospray_common
     ospray_mpi_common
     ospray_module_mpi
+  )
+
+  ospray_create_application(ospBoostMpiPlayground
+    boostMpiApp.cpp
+  LINK
+    ospray_common
+    ospray_mpi_common
+    ospray_module_mpi
+    ${Boost_LIBRARIES}
   )
 
 endif()
