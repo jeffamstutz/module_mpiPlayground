@@ -16,23 +16,22 @@
 
 #include <boost/mpi/communicator.hpp>
 #include <boost/mpi/environment.hpp>
+#include <boost/mpi/nonblocking.hpp>
 
 #include <iostream>
 #include <string>
 
-void tutorial1()
+boost::mpi::environment env;
+boost::mpi::communicator world;
+
+void tutorial_hello()
 {
-  boost::mpi::environment env;
-  boost::mpi::communicator world;
   std::cout << "I am process " << world.rank() << " of " << world.size()
             << "." << std::endl;
 }
 
 void tutorial_point_communication()
 {
-  boost::mpi::environment env;
-  boost::mpi::communicator world;
-
   auto rank = world.rank();
 
   if (rank == 0) {
@@ -51,9 +50,6 @@ void tutorial_point_communication()
 
 void tutorial_non_blocking()
 {
-  boost::mpi::environment env;
-  boost::mpi::communicator world;
-
   auto rank = world.rank();
 
   if (rank == 0) {
@@ -75,8 +71,8 @@ void tutorial_non_blocking()
 
 int main(int argc, char **argv)
 {
-  //tutorial_hello();
-  //tutorial_point_communication();
+  tutorial_hello();
+  tutorial_point_communication();
   tutorial_non_blocking();
 
   return 0;
