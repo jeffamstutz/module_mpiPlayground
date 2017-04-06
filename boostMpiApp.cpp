@@ -28,7 +28,7 @@ void tutorial1()
             << "." << std::endl;
 }
 
-int tutorial2()
+void tutorial_point_communication()
 {
   boost::mpi::environment env;
   boost::mpi::communicator world;
@@ -49,10 +49,35 @@ int tutorial2()
   }
 }
 
+void tutorial_non_blocking()
+{
+  boost::mpi::environment env;
+  boost::mpi::communicator world;
+
+  auto rank = world.rank();
+
+  if (rank == 0) {
+    boost::mpi::request reqs[2];
+    std::string msg, out_msg = "Hello";
+    reqs[0] = world.isend(1, 0, out_msg);
+    reqs[1] = world.irecv(1, 1, msg);
+    boost::mpi::wait_all(reqs, reqs + 2);
+    std::cout << msg << "!" << std::endl;
+  } else if (rank == 1) {
+    boost::mpi::request reqs[2];
+    std::string msg, out_msg = "world";
+    reqs[0] = world.isend(0, 1, out_msg);
+    reqs[1] = world.irecv(0, 0, msg);
+    boost::mpi::wait_all(reqs, reqs + 2);
+    std::cout << msg << ", ";
+  }
+}
+
 int main(int argc, char **argv)
 {
-  //tutorial1();
-  tutorial2();
+  //tutorial_hello();
+  //tutorial_point_communication();
+  tutorial_non_blocking();
 
   return 0;
 }
