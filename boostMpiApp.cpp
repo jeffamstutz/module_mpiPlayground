@@ -24,6 +24,19 @@
 boost::mpi::environment env;
 boost::mpi::communicator world;
 
+int rank = -1;
+
+template <typename FCN_T>
+void synchronized(int r, FCN_T &&fcn)
+{
+  world.barrier();
+
+  if (rank == r)
+    fcn();
+
+  world.barrier();
+}
+
 void tutorial_hello()
 {
   std::cout << "I am process " << world.rank() << " of " << world.size()
@@ -32,8 +45,6 @@ void tutorial_hello()
 
 void tutorial_point_communication()
 {
-  auto rank = world.rank();
-
   if (rank == 0) {
     world.send(1, 0, std::string("Hello"));
     std::string msg;
@@ -50,8 +61,6 @@ void tutorial_point_communication()
 
 void tutorial_non_blocking()
 {
-  auto rank = world.rank();
-
   if (rank == 0) {
     boost::mpi::request reqs[2];
     std::string msg, out_msg = "Hello";
@@ -71,8 +80,24 @@ void tutorial_non_blocking()
 
 int main()
 {
+  rank = world.rank();
+
+  synchronized(0, [](){
+    std::cout << "###tutorial_hello: \n" << std::endl;
+  });
+
   tutorial_hello();
+
+  synchronized(0, [](){
+    std::cout << "\n###tutorial_point_communication: \n" << std::endl;
+  });
+
   tutorial_point_communication();
+
+  synchronized(0, [](){
+    std::cout << "\n###tutorial_non_blocking: \n" << std::endl;
+  });
+
   tutorial_non_blocking();
 
   return 0;
